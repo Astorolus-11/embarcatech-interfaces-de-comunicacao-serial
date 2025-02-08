@@ -1,8 +1,15 @@
+//Bibliotecas:
+#include <math.h>
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "pico/bootrom.h" // Responsável por entrar no modo bootsel pelo botão joy
+#include "hardware/pio.h"
+#include "hardware/clocks.h"
+#include "hardware/adc.h"
+#include "matriz_leds.pio.h" // arquivo .pio
 
 //Pinos:
+#define pin_matrix 7
 const uint led_verde = 11;
 const uint led_azul = 12;
 const uint botao_a = 5;
@@ -12,14 +19,103 @@ const uint botao_joy = 22;
 //Protótipos das funções:
 void setup(); // Inicializa os pinos
 static void gpio_irq_handler(uint gpio, uint32_t events); // Trata a interrupção
+void exibir_numero(int num);
+uint32_t cores(double b, double r, double g);
 
 //Variáveis globais:
 static volatile uint32_t last_time = 0; // Para tratar o debounce
 static bool estado_led_verde = false;
 static bool estado_led_azul = false;
+#define pixels 25
+
+//PIO:
+static PIO pio;
+static uint sm;
+static uint offset;
+static uint32_t valor_led;
+
+//Desenho dos números da matriz de leds:
+double numeros[10][25]={
+    {0.0, 0.2, 0.2, 0.2, 0.0,  // 0
+     0.0, 0.2, 0.0, 0.2, 0.0,  
+     0.0, 0.2, 0.0, 0.2, 0.0,  
+     0.0, 0.2, 0.0, 0.2, 0.0,  
+     0.0, 0.2, 0.2, 0.2, 0.0},
+
+    {0.0, 0.0, 0.2, 0.0, 0.0, // 1 
+     0.0, 0.0, 0.2, 0.2, 0.0,
+     0.0, 0.0, 0.2, 0.0, 0.0,
+     0.0, 0.0, 0.2, 0.0, 0.0,
+     0.0, 0.0, 0.2, 0.0, 0.0},
+
+    {0.0, 0.2, 0.2, 0.2, 0.0, // 2 
+     0.0, 0.2, 0.0, 0.0, 0.0,
+     0.0, 0.0, 0.5, 0.0, 0.0,
+     0.0, 0.0, 0.0, 0.2, 0.0,
+     0.0, 0.2, 0.2, 0.2, 0.0},
+
+    {0.0, 0.2, 0.2, 0.2, 0.0, // 3 
+     0.0, 0.2, 0.0, 0.0, 0.0,
+     0.0, 0.2, 0.2, 0.2, 0.0,
+     0.0, 0.2, 0.0, 0.0, 0.0,
+     0.0, 0.2, 0.2, 0.2, 0.0},
+
+    {0.0, 0.2, 0.0, 0.2, 0.0, // 4 
+     0.0, 0.2, 0.0, 0.2, 0.0,
+     0.0, 0.2, 0.2, 0.2, 0.0,
+     0.0, 0.2, 0.0, 0.0, 0.0,
+     0.0, 0.0, 0.0, 0.2, 0.0},
+
+    {0.0, 0.2, 0.2, 0.2, 0.0, // 5 
+     0.0, 0.0, 0.0, 0.2, 0.0,
+     0.0, 0.2, 0.2, 0.2, 0.0,
+     0.0, 0.2, 0.0, 0.0, 0.0,
+     0.0, 0.2, 0.2, 0.2, 0.0},
+
+    {0.0, 0.2, 0.2, 0.2, 0.0, // 6 
+     0.0, 0.0, 0.0, 0.2, 0.0,
+     0.0, 0.2, 0.2, 0.2, 0.0,
+     0.0, 0.2, 0.0, 0.2, 0.0,
+     0.0, 0.2, 0.2, 0.2, 0.0},
+
+    {0.0, 0.2, 0.2, 0.2, 0.0, // 7 
+     0.0, 0.2, 0.0, 0.0, 0.0,
+     0.0, 0.2, 0.2, 0.2, 0.0,
+     0.0, 0.2, 0.0, 0.0, 0.0,
+     0.0, 0.0, 0.0, 0.2, 0.0},
+
+    {0.0, 0.2, 0.2, 0.2, 0.0, // 8 
+     0.0, 0.2, 0.0, 0.2, 0.0,
+     0.0, 0.2, 0.2, 0.2, 0.0,
+     0.0, 0.2, 0.0, 0.2, 0.0,
+     0.0, 0.2, 0.2, 0.2, 0.0},
+
+    {0.0, 0.2, 0.2, 0.2, 0.0, // 9 
+     0.0, 0.2, 0.0, 0.2, 0.0,
+     0.0, 0.2, 0.2, 0.2, 0.0,
+     0.0, 0.2, 0.0, 0.0, 0.0,
+     0.0, 0.0, 0.0, 0.2, 0.0}
+
+};
 
 int main()
-{   setup();
+{   
+    pio=pio0;
+    bool ok;
+
+    ok=set_sys_clock_khz(128000,false);// definindo o clock do sistema
+
+    printf("Iniciando a transmissao PIO:\n");
+    if(ok){ // Se o clock de 128000 foi habilitado com sucesso
+        printf("Clock definido: %ld\n",clock_get_hz(clk_sys));
+    }
+
+    //CONFIGURAÇÂO DA PIO --------------------------------------------------------------------------------------------------
+    offset = pio_add_program(pio,&matriz_leds_program); 
+    sm = pio_claim_unused_sm(pio,true); // Utiliza uma máquina de estado que não está ocupada 
+    matriz_leds_program_init(pio, sm, offset, pin_matrix);
+    //-----------------------------------------------------------------------------------------------------------------------
+    setup();
     stdio_init_all();
 
 
@@ -30,6 +126,15 @@ int main()
     //-------------------------------------------------------------------------------------------------------------------
     
     while (true) {
+        if(stdio_usb_connected()){
+            char c;
+            scanf("%c",&c);
+            if(c>='0' && c<='9'){
+                int numero = c - '0'; //Converte para número
+                exibir_numero(numero);
+            }
+
+        }
         
     }
 }
@@ -98,3 +203,18 @@ static void gpio_irq_handler(uint gpio, uint32_t events){ // Função de callbac
 
     }
 }
+uint32_t cores(double b, double r, double g){
+    unsigned char R,G,B;
+    R=r*255;
+    G=g*255;
+    B=b*255;
+    return(G<<24) | (R<<16) | (B<<8); // para cada 8 bits recebe uma cor
+}
+void exibir_numero(int num){
+
+    for(uint i=0;i<pixels;i++){ // Descobre qual o digito e desenha
+        valor_led=cores(0.0,numeros[num][24-i],0.0);
+        pio_sm_put_blocking(pio,sm,valor_led);
+       }
+}
+
