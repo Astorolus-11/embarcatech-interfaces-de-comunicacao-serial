@@ -60,6 +60,7 @@ target_link_libraries(embarcatech-interfaces-de-comunicacao
         hardware_clocks
         hardware_adc
         hardware_pio
+        hardware_i2c
         
         )
 
