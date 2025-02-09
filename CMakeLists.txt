@@ -35,7 +35,7 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(embarcatech-interfaces-de-comunicacao embarcatech-interfaces-de-comunicacao.c )
+add_executable(embarcatech-interfaces-de-comunicacao embarcatech-interfaces-de-comunicacao.c ssd1306.c )
 pico_generate_pio_header(embarcatech-interfaces-de-comunicacao ${CMAKE_CURRENT_LIST_DIR}/matriz_leds.pio)
 
 pico_set_program_name(embarcatech-interfaces-de-comunicacao "embarcatech-interfaces-de-comunicacao")

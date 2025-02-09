@@ -8,16 +8,21 @@
 #include "hardware/adc.h"
 #include "matriz_leds.pio.h" // arquivo .pio
 #include "hardware/i2c.h" // Responsável pela comunicação I2C
-#include "bibliotecas/fonte.h" // Arquivo das fontes
-#include "bibliotecas/ssd1306.h" // Arquivo que controla o display
+#include "fonte.h" // Arquivo das fontes
+#include "ssd1306.h" // Arquivo que controla o display
 
 //Pinos:
 #define pin_matrix 7
+#define I2C_PORT i2c1
+#define I2C_SDA 14
+#define I2C_SCL 15
+#define endereco 0x3C
 const uint led_verde = 11;
 const uint led_azul = 12;
 const uint botao_a = 5;
 const uint botao_b = 6;
 const uint botao_joy = 22;
+
 
 //Protótipos das funções:
 void setup(); // Inicializa os pinos
@@ -30,6 +35,7 @@ static volatile uint32_t last_time = 0; // Para tratar o debounce
 static bool estado_led_verde = false;
 static bool estado_led_azul = false;
 #define pixels 25
+ssd1306_t ssd; //Estrutura do display
 
 //PIO:
 static PIO pio;
@@ -113,11 +119,33 @@ int main()
         printf("Clock definido: %ld\n",clock_get_hz(clk_sys));
     }
 
-    //CONFIGURAÇÂO DA PIO --------------------------------------------------------------------------------------------------
+    //CONFIGURAÇÂO DA PIO:--------------------------------------------------------------------------------------------------
     offset = pio_add_program(pio,&matriz_leds_program); 
     sm = pio_claim_unused_sm(pio,true); // Utiliza uma máquina de estado que não está ocupada 
     matriz_leds_program_init(pio, sm, offset, pin_matrix);
     //-----------------------------------------------------------------------------------------------------------------------
+    //CONFIGURAÇÃO DO I2C:---------------------------------------------------------------------------------------------------
+    i2c_init(I2C_PORT, 400 * 1000); //Inicializa a porta i2c e define a frequência de 400khz
+    
+    //Habilita a função i2c da porta:
+    gpio_set_function(I2C_SDA, GPIO_FUNC_I2C); 
+    gpio_set_function(I2C_SCL, GPIO_FUNC_I2C); 
+    //Habilita o pull-up:
+    gpio_pull_up(I2C_SDA);
+    gpio_pull_up(I2C_SCL);
+
+    
+    ssd1306_init(&ssd, WIDTH, HEIGHT, false, endereco, I2C_PORT); //Inicializa o display
+    ssd1306_config(&ssd); //Configura o display
+    ssd1306_send_data(&ssd); //Envia os dados para o display
+    //Inicia com os pixels apagados:
+    ssd1306_fill(&ssd,false);
+    ssd1306_send_data(&ssd);
+
+
+
+    //-----------------------------------------------------------------------------------------------------------------------
+
     setup();
     stdio_init_all();
 
@@ -132,10 +160,19 @@ int main()
         if(stdio_usb_connected()){
             char c;
             scanf("%c",&c);
+            
             if(c>='0' && c<='9'){
                 int numero = c - '0'; //Converte para número
-                exibir_numero(numero);
+                exibir_numero(numero); //Desenha o número na matriz 5x5
+                ssd1306_draw_char(&ssd,c,55,25); //Configura para exibir o caractere
+                ssd1306_send_data(&ssd); //Envia os dados pro display
+
             }
+            else{
+                ssd1306_draw_char(&ssd,c,55,25); //Desenha as letras do alfabeto
+                ssd1306_send_data(&ssd); //Envia os dados pro display
+            }
+            
 
         }
         
@@ -182,8 +219,23 @@ static void gpio_irq_handler(uint gpio, uint32_t events){ // Função de callbac
             estado_led_verde=!estado_led_verde; //Inverte o estado do LED verde
             gpio_put(led_verde,estado_led_verde);
 
-            if(estado_led_verde==1) printf("LED verde ligado!\n"); //Informa o estado do LED verde pelo serial monitor
-            else { printf("LED verde desligado!\n");}
+            if(estado_led_verde==1){
+                printf("LED verde ligado!\n"); //Informa o estado do LED verde pelo serial monitor
+                //Limpa a tela e manda a mensagem no display
+                ssd1306_fill(&ssd,false);
+                ssd1306_send_data(&ssd);
+                ssd1306_draw_string(&ssd,"LED VERDE LIGADO",0,0);
+                ssd1306_send_data(&ssd);
+            } 
+            else { 
+                printf("LED verde desligado!\n");
+                //Limpa a tela e manda a mensagem no display
+                ssd1306_fill(&ssd,false);
+                ssd1306_send_data(&ssd);
+                ssd1306_draw_string(&ssd,"LED VERDE DESLIGADO",0,0);
+                ssd1306_send_data(&ssd);
+                
+            }
             
 
 
@@ -193,8 +245,22 @@ static void gpio_irq_handler(uint gpio, uint32_t events){ // Função de callbac
             estado_led_azul=!estado_led_azul; //Inverte o estado do LED azul
             gpio_put(led_azul,estado_led_azul);
 
-            if(estado_led_azul==1) printf("LED azul ligado!\n"); //Informa o estado do LED azul pelo serial monitor
-            else { printf("LED azul desligado!\n");}
+            if(estado_led_azul==1){
+                printf("LED azul ligado\n"); //Informa o estado do LED azul pelo serial monitor
+                //Limpa a tela e manda a mensagem no display
+                ssd1306_fill(&ssd,false);
+                ssd1306_send_data(&ssd);
+                ssd1306_draw_string(&ssd,"LED AZUL LIGADO",0,45);
+                ssd1306_send_data(&ssd);
+            } 
+            else { 
+                printf("LED azul desligado!\n");
+                //Limpa a tela e manda a mensagem no display
+                ssd1306_fill(&ssd,false);
+                ssd1306_send_data(&ssd);
+                ssd1306_draw_string(&ssd,"LED AZUL DESLIGADO",0,45);
+                ssd1306_send_data(&ssd);
+            }
 
 
         }
