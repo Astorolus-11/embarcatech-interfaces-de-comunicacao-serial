@@ -7,6 +7,9 @@
 #include "hardware/clocks.h"
 #include "hardware/adc.h"
 #include "matriz_leds.pio.h" // arquivo .pio
+#include "hardware/i2c.h" // Responsável pela comunicação I2C
+#include "bibliotecas/fonte.h" // Arquivo das fontes
+#include "bibliotecas/ssd1306.h" // Arquivo que controla o display
 
 //Pinos:
 #define pin_matrix 7
